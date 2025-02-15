@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8"> <!-- 設定字符編碼為 UTF-8 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 使網頁在移動設備上自適應 -->
+    <title>Binary Kite</title> <!-- 網頁標題 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script> <!-- 引入 p5.js 函式庫，用於圖形和互動功能 -->
+    <style>
+        /* 隱藏滾動條 */
+        body {
+            margin: 0; /* 移除默認邊距 */
+            overflow: hidden; /* 隱藏滾動條 */
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // 自定義隨機數生成器（線性同餘生成器）
+        function createRandomGenerator(seed) {
+            let m = 0x80000000; // 模數（2**31）
+            let a = 1103515245; // 乘數
+            let c = 12345; // 增量
+            let state = seed ? seed : Math.floor(Math.random() * (m - 1)); // 根據提供的種子初始化狀態
+
+            return function() {
+                // 線性同餘生成器的公式
+                state = (a * state + c) % m;
+                return state / (m - 1); // 返回範圍在 [0, 1) 的隨機數
+            };
+        }
+
+        // 創建一個獨立的隨機數生成器，用於更新顏色
+        let updateRandom = createRandomGenerator(67890);
+
+        // 初始化全域變數
+        let egocritter = false; // 控制是否隱藏滑鼠指標
+        let shadows = false; // 控制是否顯示陰影
+        let wiggle = true; // 控制是否顯示搖晃效果
+        let n = 3; // 控制層數（範圍）
+        let l = 50; // 總層數
+        let d = 50; // 不使用的變數
+        let zoom = 16; // 縮放因子
+        let s = 0.1; // 平滑因子
+        let colors = []; // 顏色陣列
+        let w, h, mx = 0, my = 0, rx = 0, ry = 0, vv = 0, zz = 16; // 初始化各種位置和旋轉變數
+        let t = 0, b = 0; // 時間和另一變數（未使用）
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight, WEBGL); // 創建一個 WEBGL 畫布
+            w = width / 2; // 計算畫布寬度的一半
+            h = height / 2; // 計算畫布高度的一半
+
+            // 初始化顏色陣列，每一層都有隨機的黑白顏色
+            for (let k = 0; k < l; k++) {
+                let layer = []; // 每一層的顏色陣列
+                for (let i = -n; i <= n; i++) {
+                    let row = []; // 每一行的顏色陣列
+                    for (let j = -n; j <= n; j++) {
+                        row.push(randomColor(updateRandom)); // 使用 updateRandom 生成隨機顏色
+                    }
+                    layer.push(row); // 將行添加到層中
+                }
+                colors.push(layer); // 將層添加到顏色陣列中
+            }
+
+            setInterval(updateColors, 1000); // 每秒更新一次顏色
+        }
+
+        // 產生隨機黑白顏色
+        function randomColor(randomFunc) {
+            return randomFunc() > 0.5 ? [255, 255, 255] : [0, 0, 0]; // 隨機返回白色或黑色
+        }
+
+        function updateColors() {
+            // 將顏色從前向後傳遞
+            for (let k = 0; k < l - 1; k++) {
+                for (let i = 0; i < colors[k].length; i++) {
+                    for (let j = 0; j < colors[k][i].length; j++) {
+                        colors[k][i][j] = colors[k + 1][i][j]; // 將後一層的顏色傳遞到當前層
+                    }
+                }
+            }
+
+            // 使用 updateRandom 生成新的黑白顏色
+            for (let i = 0; i < colors[l - 1].length; i++) {
+                for (let j = 0; j < colors[l - 1][i].length; j++) {
+                    colors[l - 1][i][j] = randomColor(updateRandom);
+                }
+            }
+        }
+
+        function draw() {
+            // 使用 p5.js 的內建 random()，不影響 updateColors()
+            randomSeed(0); // 重設種子，確保 draw 中的隨機行為可控
+
+            // 根據 egocritter 標誌控制是否隱藏滑鼠指標
+            if (egocritter) {
+                noCursor(); // 隱藏滑鼠指標
+            } else {
+                cursor(ARROW); // 顯示滑鼠指標
+            }
+
+            // 平滑更新滑鼠位置、旋轉角度、縮放等參數
+            mx = lerp(mx, mouseX - width / 2, s); // 滑鼠 X 軸位置平滑過渡
+            my = lerp(my, mouseY - height / 2, s); // 滑鼠 Y 軸位置平滑過渡
+            rx = lerp(rx, (w - mouseY) / w + (egocritter ? 0 : PI), s); // 滑鼠 Y 軸旋轉平滑過渡
+            ry = lerp(ry, (mouseX - w) / w, s); // 滑鼠 X 軸旋轉平滑過渡
+            vv = lerp(vv, wiggle ? 0.05 : -0.1, s); // 搖晃速度平滑過渡
+            zz = lerp(zz, zoom, s); // 縮放因子平滑過渡
+
+            noStroke(); // 不顯示邊框
+            background(0); // 設定背景顏色為黑色
+
+            if (shadows) {
+                ambientLight(100); // 設定環境光
+                pointLight(255, 255, 255, 0, 0, 400); // 設定點光源
+            }
+
+            translate(mx, my, 8 * zz * (sin(t * 0.05) - 1)); // 依據滑鼠位置、縮放及時間設定位置
+            rotateY(ry); // 根據 Y 軸旋轉
+            rotateX(rx); // 根據 X 軸旋轉
+            scale(zz); // 根據縮放因子設定大小
+
+            // 繪製每一層的方塊
+            for (let i = -n; i <= n; i++) {
+                for (let j = -n; j <= n; j++) {
+                    push(); // 保存當前變換狀態
+                    translate(i, j, 0); // 根據 i 和 j 的位置進行平移
+                    let randomOffset = random(vv, 0.1); // 使用 p5.js 的 random() 生成隨機偏移量
+                    let sScale = 1; // 初始化縮放比例
+                    for (let k = l - 1; k >= 0; k--) {
+                        translate(0, 0, sScale); // 根據縮放比例進行平移
+                        fill(colors[k][i + n][j + n]); // 設定顏色
+                        box(1, 1, sScale); // 繪製方塊
+                        rotateY(randomOffset * sin(t * 0.05 + PI * k / l)); // 根據隨機偏移量及時間旋轉
+                        scale(0.95); // 每層方塊逐漸縮小
+                        sScale /= 0.97; // 更新縮放比例
+                    }
+                    pop(); // 恢復之前的變換狀態
+                }
+            }
+
+            t++; // 增加時間
+        }
+
+        function keyPressed() {
+            // 根據鍵盤按下的鍵進行相應的操作
+            switch (key) {
+                case 'e': egocritter = !egocritter; break; // 切換 egocritter 狀態
+                case 'q': shadows = !shadows; break; // 切換陰影狀態
+                case 'w': wiggle = !wiggle; break; // 切換搖晃狀態
+                case 's': zoom /= 1.1; break; // 縮小
+                case 'd': zoom *= 1.1; break; // 放大
+                case 'a': b -= egocritter ? -1 : 1; break; // 根據 egocritter 狀態調整 b
+                case 'f': b += egocritter ? -1 : 1; break; // 根據 egocritter 狀態調整 b
+            }
+            zoom = constrain(zoom, 1, 64); // 確保縮放因子在 1 到 64 之間
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight); // 當窗口大小改變時，調整畫布大小
+            w = width / 2; // 更新畫布寬度的一半
+            h = height / 2; // 更新畫布高度的一半
+        }
+    </script>
+</body>
+</html>
